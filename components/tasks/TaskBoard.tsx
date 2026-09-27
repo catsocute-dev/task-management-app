@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   PRIORITY_LABEL,
   STATUS_LABEL,
@@ -25,30 +25,46 @@ export function TaskBoard() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const loadTasks = useCallback(async () => {
-    const query = filter === "ALL" ? "" : `?status=${filter}`;
-    const response = await fetch(`/api/tasks${query}`);
+  async function loadTasks() {
+    const response = await fetch("/api/tasks");
     if (!response.ok) {
       setMessage("Could not load tasks.");
       return;
     }
     const data = (await response.json()) as Task[];
     setTasks(data);
-  }, [filter]);
+  }
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    loadTasks()
+
+    fetch("/api/tasks")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Could not load tasks.");
+        }
+        return response.json() as Promise<Task[]>;
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setTasks(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMessage("Could not load tasks.");
+        }
+      })
       .finally(() => {
         if (!cancelled) {
           setLoading(false);
         }
       });
+
     return () => {
       cancelled = true;
     };
-  }, [loadTasks]);
+  }, []);
 
   function startEdit(task: Task) {
     setEditingId(task.id);
@@ -124,6 +140,9 @@ export function TaskBoard() {
     }
     await loadTasks();
   }
+
+  const visibleTasks =
+    filter === "ALL" ? tasks : tasks.filter((task) => task.status === filter);
 
   return (
     <section className="space-y-8">
@@ -271,13 +290,13 @@ export function TaskBoard() {
 
         {loading ? (
           <p className="text-sm text-zinc-500">Loading tasks...</p>
-        ) : tasks.length === 0 ? (
+        ) : visibleTasks.length === 0 ? (
           <p className="rounded-xl border border-dashed border-zinc-300 bg-white p-6 text-sm text-zinc-500">
             No tasks yet. Create one above.
           </p>
         ) : (
           <ul className="space-y-3">
-            {tasks.map((task) => (
+            {visibleTasks.map((task) => (
               <li
                 key={task.id}
                 className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm"

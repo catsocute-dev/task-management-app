@@ -115,14 +115,21 @@ erDiagram
 
 ## Supabase setup
 
-1. Create a free project at [supabase.com](https://supabase.com).
-2. Open **Project Settings → Database**.
-3. Copy **Transaction pooler** URI → `DATABASE_URL` (port 6543, add `?pgbouncer=true&sslmode=require`).
-4. Copy **Direct connection** URI → `DIRECT_URL` (port 5432). If connect fails on IPv4-only networks, use **Session pooler** on port 5432 instead.
-5. Run `npx prisma migrate deploy` (or `npx prisma migrate dev --name init` on a fresh database).
-6. Confirm tables `User`, `Team`, `TeamMember`, and `Task` in the Table Editor.
+1. Create a free project at [supabase.com](https://supabase.com) and wait until it is healthy.
+2. Open **Connect** (or **Project Settings → Database**) and choose URI.
+3. `DATABASE_URL`: **Transaction pooler**, port **6543**. Replace the password, then append `pgbouncer=true&sslmode=require` if they are missing. Encode special characters in the password (`@` → `%40`, `#` → `%23`).
+4. `DIRECT_URL`: **Direct**, port **5432**, with `sslmode=require`. If your network is IPv4-only, use the **Session pooler** URI on port 5432 instead.
+5. Copy `.env.example` to `.env` (never commit `.env`) and paste both URLs.
+6. Apply the schema:
 
-Prisma connects as the database user and can manage rows even if you enable Row Level Security to lock down the Supabase Data API.
+```bash
+npx prisma migrate deploy
+```
+
+On a brand-new database you can instead run `npx prisma migrate dev --name init`. This repo already includes `prisma/migrations/20240928000000_init`, so `migrate deploy` is enough.
+7. Confirm tables `User`, `Team`, `TeamMember`, and `Task` in **Table Editor**. Optionally add sample tasks with `npx prisma studio`.
+
+Prisma uses the database user and can still read/write rows if you enable Row Level Security so the Supabase Data API is not publicly writable.
 
 ## GitHub Actions
 
