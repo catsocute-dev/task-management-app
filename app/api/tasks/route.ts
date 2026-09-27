@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   }
 
   const tasks = await prisma.task.findMany({
-    where: status ? { status } : undefined,
+    where: isTaskStatus(status) ? { status } : undefined,
     orderBy: { createdAt: "desc" },
   });
 
