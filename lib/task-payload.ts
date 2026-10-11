@@ -21,6 +21,7 @@ export type TaskWriteInput = {
   status?: TaskStatus;
   priority?: Priority;
   dueDate?: Date | null;
+  assigneeId?: string | null;
 };
 
 export function parseTaskPayload(
@@ -76,6 +77,16 @@ export function parseTaskPayload(
       data.dueDate = parsed;
     } else {
       return { error: "dueDate must be a string or null." };
+    }
+  }
+
+  if ("assigneeId" in record) {
+    if (record.assigneeId === null || record.assigneeId === "") {
+      data.assigneeId = null;
+    } else if (typeof record.assigneeId === "string") {
+      data.assigneeId = record.assigneeId;
+    } else {
+      return { error: "assigneeId must be a string or null." };
     }
   }
 

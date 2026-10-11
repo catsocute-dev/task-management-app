@@ -134,9 +134,9 @@ Commit (schema + client, **không** secret): `feat: add prisma schema for users,
 
 Next.js 16: `params` là `Promise` — phải `await`.
 
-| Method | File | Việc |
-|---|---|---|
-| GET/POST | [`app/api/tasks/route.ts`](app/api/tasks/route.ts) | list / create |
+| Method     | File                                                         | Việc            |
+| ---------- | ------------------------------------------------------------ | --------------- |
+| GET/POST   | [`app/api/tasks/route.ts`](app/api/tasks/route.ts)           | list / create   |
 | PUT/DELETE | [`app/api/tasks/[id]/route.ts`](app/api/tasks/[id]/route.ts) | update / delete |
 
 - GET hỗ trợ query `?status=` (bonus filter).
@@ -168,6 +168,7 @@ flowchart LR
 - [`app/login/page.tsx`](app/login/page.tsx): placeholder (nav không gãy; chưa auth).
 
 Commits:
+
 - `feat: add shared layout and public task CRUD on homepage`
 - `feat: add teams and login coming soon pages`
 
@@ -179,6 +180,7 @@ Commits:
 - README: cách chạy local, env, schema tóm tắt, **ERD Mermaid** (GitHub render thành diagram), link Vercel (bạn dán sau khi deploy).
 
 Commits:
+
 - `ci: add github actions lint and build workflow`
 - `docs: update readme with setup notes and schema ERD`
 
@@ -191,6 +193,7 @@ Tối thiểu 5 commit có nghĩa như đề.
 Agent **không** tạo project Supabase / Vercel hộ được (cần tài khoản). Khi code xong sẽ viết checklist ngắn trong README + chat:
 
 **Supabase**
+
 1. supabase.com → New project (Postgres).
 2. **Project Settings → Database → Connection string**.
 3. `DATABASE_URL`: **Transaction pooler** port **6543**, thêm `?pgbouncer=true` (và `sslmode=require` nếu chưa có).
@@ -199,11 +202,13 @@ Agent **không** tạo project Supabase / Vercel hộ được (cần tài kho�
 6. Table Editor / Prisma Studio: xác nhận 4 bảng; thêm vài task mẫu (Studio: `npx prisma studio`).
 
 **GitHub Actions**
+
 1. Repo public (đề yêu cầu).
 2. Push branch `main` → tab **Actions** → workflow chạy (không cần secret nếu dùng dummy URL như trên).
 3. Nếu repo mới: Settings → Actions → cho phép workflows.
 
 **Vercel**
+
 1. Import GitHub repo.
 2. Env: `DATABASE_URL`, `DIRECT_URL` (giống `.env`, không commit).
 3. Deploy → homepage CRUD public, không login.

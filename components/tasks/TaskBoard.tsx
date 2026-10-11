@@ -1,11 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import {
-  PRIORITY_LABEL,
-  STATUS_LABEL,
-  type Task,
-} from "@/lib/task-types";
+import { PRIORITY_LABEL, STATUS_LABEL, type Task } from "@/lib/task-types";
 
 const emptyForm = {
   title: "",
@@ -247,11 +243,7 @@ export function TaskBoard() {
             disabled={saving}
             className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-60"
           >
-            {saving
-              ? "Saving..."
-              : editingId
-                ? "Save changes"
-                : "Create task"}
+            {saving ? "Saving..." : editingId ? "Save changes" : "Create task"}
           </button>
           {editingId ? (
             <button

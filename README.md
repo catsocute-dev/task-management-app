@@ -1,83 +1,148 @@
-# TaskHub — Task & Team Management
+# TaskHub — Task & Team Management App (Assignment 2)
 
-Public task list for Assignment 1. Anyone can create, view, update, and delete tasks without logging in. Teams and authentication are placeholders for later assignments.
+A collaborative Task & Team Management application built with **Next.js App Router**, **Prisma ORM**, and **PostgreSQL (Supabase)**, featuring JWT authentication, role-based authorization, team management, task assignment, and an interactive Kanban board.
 
-## Links
+## Submission Information (Grading Reference)
 
-- GitHub: this repository
-- Live site (Vercel): _add the production URL after deploy_
+- **Test Account Email:** `test@example.com`
+- **Test Account Password:** `password123`
+- **Secondary Member Account:** `member@example.com` / `password123`
+- **Email-verified / Ready to log in immediately:** Yes (using self-contained JWT authentication; no inbox confirmation blockers)
+- **Self-registration works:** Yes (the grader can register any new account on `/register` and immediately access the app)
 
-## Features (Assignment 1)
+---
 
-- Homepage with app intro, navigation, create/edit/delete tasks
-- REST API backed by Prisma and PostgreSQL (Supabase)
-- Status filter and required-title validation
-- Shared header/footer layout, Teams and Login “Coming soon” pages
+## Features (Assignment 2)
 
-## Tech stack
+### 1. Authentication & Security
 
-- Next.js (App Router, TypeScript)
-- Prisma ORM 6
-- PostgreSQL on Supabase
-- Tailwind CSS
-- Vercel hosting
+- **Register**: Create an account with name, email, and password (`POST /api/auth/register`).
+- **Login**: Authenticate and receive a JWT session (`POST /api/auth/login`), stored in an HTTP-only secure cookie and returned as a Bearer token in the JSON response.
+- **Logout**: Invalidate session cookie (`POST /api/auth/logout`).
+- **Me Endpoint**: Get current authenticated user profile (`GET /api/auth/me`).
+- **Route Protection**: Middleware ensures unauthenticated users can only view the homepage (`/`), login (`/login`), and register (`/register`). All team and task features require login.
+- **Grading Convenience**: The `/login` page features a one-click test credentials autofill button.
 
-## Environment variables
+### 2. Team Management
 
-Copy [`.env.example`](.env.example) to `.env` and fill in values from Supabase.
+- **Create Team**: Logged-in users can create teams and automatically become the team `OWNER` (`POST /api/teams`).
+- **List Teams**: View all teams the current user owns or belongs to (`GET /api/teams`).
+- **Team Workspace**: View team details, members, and task lists (`GET /api/teams/:id`).
+- **Edit / Delete Team**: Team Owner can update name/description or delete the team (`PUT /api/teams/:id`, `DELETE /api/teams/:id`).
+- **Member Management**: Owner can add members by email (`POST /api/teams/:id/members`) and remove members (`DELETE /api/teams/:id/members/:userId`).
 
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | Transaction pooler (port **6543**) for the running app. Append `pgbouncer=true`. |
-| `DIRECT_URL` | Direct DB (port **5432**) for Prisma migrations. Use the session pooler on 5432 if IPv6 fails. |
+### 3. Task Management & Relational Modeling
 
-Never commit `.env`.
+- **Create Task**: Any member of a team can create tasks within that team (`POST /api/teams/:id/tasks`).
+- **Assign Task**: Tasks can be assigned to specific team members.
+- **Update Task**: Members can update title, description, status, priority, due date, and assignee (`PUT /api/tasks/:id`).
+- **Role-Based Delete**: **Only the task creator, the assignee, or the team Owner can delete a task** (`DELETE /api/tasks/:id`). Other team members receive a `403 Forbidden` response.
 
-## Local setup
+### 4. Interactive UI & Bonus Features
 
-```bash
-cp .env.example .env
-# paste your Supabase URLs into .env
-npm install
-npx prisma migrate deploy
-npm run dev
+- **Kanban Board**: Drag-and-drop tasks between _To Do_, _In Progress_, and _Done_ columns with optimistic status updates and quick-move buttons.
+- **Table View Toggle**: Switch effortlessly between visual Kanban columns and a structured data table.
+- **Search & Multi-Filter**: Search by keywords; filter by status, priority, or assignee.
+- **Task Pagination**: Client-side and server-side pagination for teams with large task volumes.
+- **Status & Priority Badges**: Rich, color-coded badges for visual clarity.
+
+---
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router, Server Route Handlers, React 19)
+- **Database**: PostgreSQL on Supabase
+- **ORM**: Prisma 6
+- **Auth**: JWT via `jose` and `bcryptjs` (HTTP-only cookies + Authorization header support)
+- **Styling**: Tailwind CSS + Lucide Icons
+- **Deployment**: Vercel
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env`:
+
+```env
+# Supabase PostgreSQL Connection Strings
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:6543/postgres?pgbouncer=true&sslmode=require"
+DIRECT_URL="postgresql://USER:PASSWORD@HOST:5432/postgres?sslmode=require"
+
+# JWT Secret for Token Signing
+JWT_SECRET="your-secure-jwt-secret-key-32-chars-or-more"
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+---
 
-Optional: inspect tables and seed a few rows with Prisma Studio:
+## Step-by-Step External System Setup Guide
 
-```bash
-npx prisma studio
-```
+### 1. Supabase Setup (Database & Migrations)
 
-## API
+1. Log in to [Supabase](https://supabase.com) and open your project.
+2. In **Project Settings** → **Database**:
+   - Copy the **Connection string (URI)** with **Transaction pooler** (port `6543`) into `DATABASE_URL` (ensure `?pgbouncer=true&sslmode=require` is present).
+   - Copy the **Direct connection URI** (port `5432`) into `DIRECT_URL`.
+3. Synchronize database schema:
+   ```bash
+   npx prisma db push
+   # or
+   npx prisma migrate deploy
+   ```
+4. Seed test accounts and initial team tasks:
+   ```bash
+   npm run db:seed
+   ```
+5. In Supabase **Table Editor**, confirm that `User`, `Team`, `TeamMember`, and `Task` tables contain initial rows.
 
-| Method | Path | Description |
-| --- | --- | --- |
-| GET | `/api/tasks` | List tasks (`?status=TODO\|IN_PROGRESS\|DONE` optional) |
-| POST | `/api/tasks` | Create a task |
-| PUT | `/api/tasks/:id` | Update a task |
-| DELETE | `/api/tasks/:id` | Delete a task |
+### 2. Vercel Setup (Deployment & Configuration)
 
-## Prisma schema (tables)
+1. Open your project on [Vercel Dashboard](https://vercel.com).
+2. Go to **Settings** → **Environment Variables** and add:
+   - `DATABASE_URL`: Your Supabase transaction pooler URI.
+   - `DIRECT_URL`: Your Supabase direct connection URI.
+   - `JWT_SECRET`: A secure random secret string.
+3. In **Settings** → **Build & Development Settings**:
+   - Build Command: `prisma generate && next build` (defined in `package.json`).
+4. Trigger a deployment by pushing to `main` branch on GitHub:
+   ```bash
+   git push origin main
+   ```
+5. Verify that the production deployment succeeds and all pages (`/`, `/login`, `/register`, `/teams`, `/teams/:id`) are functional.
 
-- **User** — id, name, email, passwordHash, createdAt
-- **Team** — id, name, description, ownerId, createdAt
-- **TeamMember** — id, teamId, userId, role, joinedAt
-- **Task** — id, title, description, status, priority, dueDate, teamId, assigneeId, createdAt
+---
 
-`Task.teamId` and `Task.assigneeId` are optional in Assignment 1.
+## RESTful API Endpoints Summary
 
-### Entity relationship diagram
+| Method   | Path                             | Description                            | Access Control                                            |
+| -------- | -------------------------------- | -------------------------------------- | --------------------------------------------------------- |
+| `POST`   | `/api/auth/register`             | Register new user                      | Public                                                    |
+| `POST`   | `/api/auth/login`                | Login and receive token                | Public                                                    |
+| `POST`   | `/api/auth/logout`               | Logout (clear cookie)                  | Public                                                    |
+| `GET`    | `/api/auth/me`                   | Current user profile                   | Authenticated user                                        |
+| `GET`    | `/api/teams`                     | List current user's teams              | Authenticated user                                        |
+| `POST`   | `/api/teams`                     | Create a new team                      | Authenticated user (becomes Owner)                        |
+| `GET`    | `/api/teams/:id`                 | Get team details, members, tasks       | Team members & owner                                      |
+| `PUT`    | `/api/teams/:id`                 | Update team name & description         | **Team Owner only** (403 otherwise)                       |
+| `DELETE` | `/api/teams/:id`                 | Delete team and cascade tasks          | **Team Owner only** (403 otherwise)                       |
+| `POST`   | `/api/teams/:id/members`         | Add member by email                    | **Team Owner only**                                       |
+| `DELETE` | `/api/teams/:id/members/:userId` | Remove member from team                | **Team Owner only** (cannot remove self)                  |
+| `GET`    | `/api/teams/:id/tasks`           | List tasks (supports search & filters) | Team members & owner                                      |
+| `POST`   | `/api/teams/:id/tasks`           | Create task within team                | Any team member                                           |
+| `PUT`    | `/api/tasks/:id`                 | Update task details / status           | Any team member                                           |
+| `DELETE` | `/api/tasks/:id`                 | Delete a task                          | **Creator, assignee, or team Owner only** (403 otherwise) |
+
+---
+
+## Entity Relationship Diagram (ERD)
 
 ```mermaid
 erDiagram
-  User ||--o{ Team : owns
-  User ||--o{ TeamMember : joins
-  Team ||--o{ TeamMember : has
-  Team ||--o{ Task : contains
-  User ||--o{ Task : assigned
+  User ||--o{ Team : "owns (ownerId)"
+  User ||--o{ TeamMember : "joins (userId)"
+  Team ||--o{ TeamMember : "has members (teamId)"
+  Team ||--o{ Task : "contains (teamId)"
+  User ||--o{ Task : "assigned to (assigneeId)"
+  User ||--o{ Task : "created by (creatorId)"
 
   User {
     string id PK
@@ -97,67 +162,39 @@ erDiagram
     string id PK
     string teamId FK
     string userId FK
-    string role
+    enum role "OWNER | MEMBER"
     datetime joinedAt
   }
   Task {
     string id PK
     string title
     string description
-    string status
-    string priority
+    enum status "TODO | IN_PROGRESS | DONE"
+    enum priority "LOW | MEDIUM | HIGH"
     datetime dueDate
     string teamId FK
     string assigneeId FK
+    string creatorId FK
     datetime createdAt
   }
 ```
 
-## Supabase setup
+---
 
-1. Create a free project at [supabase.com](https://supabase.com) and wait until it is healthy.
-2. Open **Connect** (or **Project Settings → Database**) and choose URI.
-3. `DATABASE_URL`: **Transaction pooler**, port **6543**. Replace the password, then append `pgbouncer=true&sslmode=require` if they are missing. Encode special characters in the password (`@` → `%40`, `#` → `%23`).
-4. `DIRECT_URL`: **Direct**, port **5432**, with `sslmode=require`. If your network is IPv4-only, use the **Session pooler** URI on port 5432 instead.
-5. Copy `.env.example` to `.env` (never commit `.env`) and paste both URLs.
-6. Apply the schema:
+## Local Development
 
 ```bash
-npx prisma migrate deploy
+# 1. Install dependencies
+npm install
+
+# 2. Generate Prisma Client
+npx prisma generate
+
+# 3. Seed test account and data
+npm run db:seed
+
+# 4. Start local development server
+npm run dev
 ```
 
-On a brand-new database you can instead run `npx prisma migrate dev --name init`. This repo already includes `prisma/migrations/20240928000000_init`, so `migrate deploy` is enough.
-7. Confirm tables `User`, `Team`, `TeamMember`, and `Task` in **Table Editor**. Optionally add sample tasks with `npx prisma studio`.
-
-Prisma uses the database user and can still read/write rows if you enable Row Level Security so the Supabase Data API is not publicly writable.
-
-## GitHub Actions
-
-The workflow in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs lint and `next build` on every push and pull request.
-
-1. Push this repository to GitHub (public, as required).
-2. Open the **Actions** tab and enable workflows if GitHub asks.
-3. Dummy `DATABASE_URL` values are set in the workflow so `prisma generate` and the build can run without a live database.
-
-## Vercel deploy
-
-1. Import this GitHub repo in [Vercel](https://vercel.com).
-2. Add `DATABASE_URL` and `DIRECT_URL` in **Project Settings → Environment Variables** (Production, Preview, Development).
-3. Deploy. After the first deploy, run migrations against production once:
-
-```bash
-npx prisma migrate deploy
-```
-
-(with the same production URLs in your local `.env`, or via a one-off Vercel command)
-
-4. Open the production URL and confirm the homepage task list works without login.
-
-## Scripts
-
-| Script | Command |
-| --- | --- |
-| Dev | `npm run dev` |
-| Lint | `npm run lint` |
-| Format | `npm run format` |
-| Build | `npm run build` |
+Open [http://localhost:3000](http://localhost:3000) to view the application.
