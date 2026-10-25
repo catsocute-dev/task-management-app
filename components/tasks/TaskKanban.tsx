@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Pencil, Trash2 } from "lucide-react";
+import { Calendar, Pencil, Trash2 } from "lucide-react";
 import {
   Task,
   TaskStatus,
+  Role,
   STATUS_COLORS,
   PRIORITY_LABEL,
   PRIORITY_COLORS,
@@ -14,6 +15,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 interface TaskKanbanProps {
   tasks: Task[];
   teamOwnerId: string;
+  currentUserRole?: Role;
   onEditTask: (task: Task) => void;
   onDeleteTask: (task: Task) => void;
   onStatusChange: (taskId: string, newStatus: TaskStatus) => void;
@@ -28,6 +30,7 @@ const COLUMNS: { status: TaskStatus; label: string }[] = [
 export function TaskKanban({
   tasks,
   teamOwnerId,
+  currentUserRole,
   onEditTask,
   onDeleteTask,
   onStatusChange,
@@ -35,13 +38,15 @@ export function TaskKanban({
   const { user: currentUser } = useAuth();
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
 
+  // 3-Tier Permission Check for Delete:
+  // - OWNER: Can delete any task
+  // - ADMIN: Can delete any task
+  // - MEMBER: Can only delete tasks they personally created
   const canDelete = (task: Task) => {
     if (!currentUser) return false;
-    return (
-      currentUser.id === task.creatorId ||
-      currentUser.id === task.assigneeId ||
-      currentUser.id === teamOwnerId
-    );
+    if (currentUserRole === "OWNER" || currentUserRole === "ADMIN") return true;
+    if (currentUser.id === teamOwnerId) return true;
+    return currentUser.id === task.creatorId;
   };
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
@@ -65,48 +70,49 @@ export function TaskKanban({
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {COLUMNS.map((col) => {
-        const columnTasks = tasks.filter((t) => t.status === col.status);
-        const colStyle = STATUS_COLORS[col.status];
+        const colTasks = tasks.filter((t) => t.status === col.status);
+        const colStyles = STATUS_COLORS[col.status];
 
         return (
           <div
             key={col.status}
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, col.status)}
-            className="flex flex-col rounded-xl border border-zinc-200/80 bg-zinc-50/70 p-4 min-h-[480px] transition-colors"
+            className="flex flex-col rounded-2xl bg-zinc-50/70 border border-zinc-200/80 p-4 min-h-[500px]"
           >
             {/* Column Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-200/60 mb-3">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-200">
               <div className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${colStyle.dot}`} />
-                <h3 className="text-sm font-bold text-zinc-900">{col.label}</h3>
+                <span className={`h-2.5 w-2.5 rounded-full ${colStyles.dot}`} />
+                <h3 className="font-bold text-sm text-zinc-900">{col.label}</h3>
               </div>
-              <span className="rounded-full bg-zinc-200/70 px-2 py-0.5 text-xs font-semibold text-zinc-700">
-                {columnTasks.length}
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white border border-zinc-200 text-zinc-600">
+                {colTasks.length}
               </span>
             </div>
 
-            {/* Task Cards Container */}
-            <div className="flex-1 space-y-3 overflow-y-auto">
-              {columnTasks.length === 0 ? (
-                <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-zinc-200 p-4 text-center text-xs text-zinc-400">
+            {/* Task Card Stack */}
+            <div className="space-y-3 flex-1">
+              {colTasks.length === 0 ? (
+                <div className="h-32 flex items-center justify-center rounded-xl border border-dashed border-zinc-200 text-xs text-zinc-400">
                   Drop tasks here
                 </div>
               ) : (
-                columnTasks.map((task) => {
-                  const priorityStyle = PRIORITY_COLORS[task.priority];
+                colTasks.map((task) => {
+                  const prioStyle = PRIORITY_COLORS[task.priority];
+                  const isDraggable = true;
+                  const userCanDelete = canDelete(task);
 
                   return (
                     <div
                       key={task.id}
-                      draggable
+                      draggable={isDraggable}
                       onDragStart={(e) => handleDragStart(e, task.id)}
-                      className="group cursor-grab active:cursor-grabbing rounded-xl border border-zinc-200 bg-white p-4 shadow-2xs hover:shadow-sm hover:border-indigo-300 transition-all space-y-3"
+                      className="group relative rounded-xl border border-zinc-200 bg-white p-4 shadow-2xs hover:shadow-md transition-all cursor-grab active:cursor-grabbing hover:border-zinc-300"
                     >
-                      {/* Priority & Actions */}
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2 mb-2">
                         <span
-                          className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${priorityStyle.bg} ${priorityStyle.text} ${priorityStyle.border}`}
+                          className={`inline-block px-2 py-0.5 text-[10px] font-semibold rounded-md border ${prioStyle.bg} ${prioStyle.text} ${prioStyle.border}`}
                         >
                           {PRIORITY_LABEL[task.priority]}
                         </span>
@@ -115,97 +121,72 @@ export function TaskKanban({
                           <button
                             type="button"
                             onClick={() => onEditTask(task)}
-                            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-indigo-600 transition-colors"
+                            className="p-1 text-zinc-400 hover:text-indigo-600 hover:bg-zinc-100 rounded transition-colors"
                             title="Edit task"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
-                          {canDelete(task) && (
+
+                          {userCanDelete ? (
                             <button
                               type="button"
                               onClick={() => onDeleteTask(task)}
-                              className="rounded p-1 text-zinc-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                              className="p-1 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
                               title="Delete task"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
+                          ) : (
+                            <span
+                              className="p-1 text-zinc-200 cursor-not-allowed"
+                              title="Only creator or Owner/Admin can delete"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </span>
                           )}
                         </div>
                       </div>
 
-                      {/* Title & Description */}
-                      <div>
-                        <h4 className="text-sm font-semibold text-zinc-900 leading-snug line-clamp-2">
-                          {task.title}
-                        </h4>
-                        {task.description && (
-                          <p className="mt-1 text-xs text-zinc-500 line-clamp-2 leading-relaxed">
-                            {task.description}
-                          </p>
-                        )}
-                      </div>
+                      <h4 className="text-sm font-semibold text-zinc-900 leading-snug">
+                        {task.title}
+                      </h4>
 
-                      {/* Assignee & Due Date */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-[11px] text-zinc-500">
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 border border-zinc-200">
-                            <User className="h-3 w-3" />
+                      {task.description && (
+                        <p className="mt-1 text-xs text-zinc-500 line-clamp-2">
+                          {task.description}
+                        </p>
+                      )}
+
+                      <div className="mt-4 pt-3 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500">
+                        {task.assignee ? (
+                          <div
+                            className="flex items-center gap-1.5"
+                            title={task.assignee.email}
+                          >
+                            <div className="h-5 w-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">
+                              {task.assignee.name.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="truncate max-w-[100px] font-medium text-zinc-700">
+                              {task.assignee.name}
+                            </span>
                           </div>
-                          <span className="font-medium text-zinc-700 truncate max-w-[120px]">
-                            {task.assignee ? task.assignee.name : "Unassigned"}
+                        ) : (
+                          <span className="text-zinc-400 text-[11px] italic">
+                            Unassigned
                           </span>
-                        </div>
+                        )}
 
                         {task.dueDate && (
-                          <div className="flex items-center gap-1 text-zinc-500">
-                            <Calendar className="h-3 w-3 text-zinc-400" />
+                          <div className="flex items-center gap-1 text-[11px] text-zinc-500">
+                            <Calendar className="h-3 w-3" />
                             <span>
-                              {new Date(task.dueDate).toLocaleDateString(
-                                undefined,
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                },
-                              )}
+                              {new Date(task.dueDate).toLocaleDateString([], {
+                                month: "short",
+                                day: "numeric",
+                              })}
                             </span>
                           </div>
                         )}
-                      </div>
-
-                      {/* Quick Move Status Pills */}
-                      <div className="flex items-center justify-between pt-1 border-t border-dashed border-zinc-100 text-[10px]">
-                        <span className="text-zinc-400">Move to:</span>
-                        <div className="flex gap-1">
-                          {col.status !== "TODO" && (
-                            <button
-                              type="button"
-                              onClick={() => onStatusChange(task.id, "TODO")}
-                              className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900"
-                            >
-                              To Do
-                            </button>
-                          )}
-                          {col.status !== "IN_PROGRESS" && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                onStatusChange(task.id, "IN_PROGRESS")
-                              }
-                              className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-600 hover:bg-blue-100 hover:text-blue-900"
-                            >
-                              In Prog
-                            </button>
-                          )}
-                          {col.status !== "DONE" && (
-                            <button
-                              type="button"
-                              onClick={() => onStatusChange(task.id, "DONE")}
-                              className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-900"
-                            >
-                              Done
-                            </button>
-                          )}
-                        </div>
                       </div>
                     </div>
                   );

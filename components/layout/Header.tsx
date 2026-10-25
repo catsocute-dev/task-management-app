@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { LogOut, User, CheckSquare } from "lucide-react";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 export function Header() {
   const pathname = usePathname();
@@ -54,7 +55,10 @@ export function Header() {
           {loading ? (
             <div className="h-8 w-24 animate-pulse rounded bg-zinc-100" />
           ) : user ? (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* In-App Real-time Notification Bell */}
+              <NotificationBell />
+
               <div className="hidden sm:flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs">
                 <User className="h-3.5 w-3.5 text-indigo-600" />
                 <span className="font-semibold text-zinc-800">{user.name}</span>
@@ -63,6 +67,7 @@ export function Header() {
                   {user.email}
                 </span>
               </div>
+
               <button
                 type="button"
                 onClick={() => logout()}

@@ -72,16 +72,24 @@ export async function PUT(request: NextRequest, context: TeamIdContext) {
 
   const team = await prisma.team.findUnique({
     where: { id },
+    include: { members: true },
   });
 
   if (!team) {
     return NextResponse.json({ error: "Team not found." }, { status: 404 });
   }
 
-  // Only Owner can update team
-  if (team.ownerId !== authUser.id) {
+  const isOwner = team.ownerId === authUser.id;
+  const member = team.members.find((m) => m.userId === authUser.id);
+  const isAdmin = member?.role === "ADMIN";
+
+  // Owner or Admin can update team details
+  if (!isOwner && !isAdmin) {
     return NextResponse.json(
-      { error: "Forbidden: Only the team owner can update team details." },
+      {
+        error:
+          "Forbidden: Only the team Owner or Admin can update team details.",
+      },
       { status: 403 },
     );
   }
@@ -157,10 +165,13 @@ export async function DELETE(request: NextRequest, context: TeamIdContext) {
     return NextResponse.json({ error: "Team not found." }, { status: 404 });
   }
 
-  // Only Owner can delete team
+  // Strictly OWNER ONLY can delete team
   if (team.ownerId !== authUser.id) {
     return NextResponse.json(
-      { error: "Forbidden: Only the team owner can delete this team." },
+      {
+        error:
+          "Forbidden: Only the team Owner can delete this team. Admins and Members cannot delete teams.",
+      },
       { status: 403 },
     );
   }

@@ -9,26 +9,31 @@ datasource db {
 }
 
 model User {
-  id            String       @id @default(cuid())
+  id            String         @id @default(cuid())
   name          String
-  email         String       @unique
+  email         String         @unique
   passwordHash  String
-  createdAt     DateTime     @default(now())
-  ownedTeams    Team[]       @relation("TeamOwner")
+  createdAt     DateTime       @default(now())
+  ownedTeams    Team[]         @relation("TeamOwner")
   memberships   TeamMember[]
-  assignedTasks Task[]       @relation("TaskAssignee")
-  createdTasks  Task[]       @relation("TaskCreator")
+  assignedTasks Task[]         @relation("TaskAssignee")
+  createdTasks  Task[]         @relation("TaskCreator")
+  messages      Message[]
+  notifications Notification[]
+  activityLogs  ActivityLog[]
 }
 
 model Team {
-  id          String       @id @default(cuid())
-  name        String
-  description String?
-  ownerId     String
-  createdAt   DateTime     @default(now())
-  owner       User         @relation("TeamOwner", fields: [ownerId], references: [id])
-  members     TeamMember[]
-  tasks       Task[]
+  id           String        @id @default(cuid())
+  name         String
+  description  String?
+  ownerId      String
+  createdAt    DateTime      @default(now())
+  owner        User          @relation("TeamOwner", fields: [ownerId], references: [id])
+  members      TeamMember[]
+  tasks        Task[]
+  messages     Message[]
+  activityLogs ActivityLog[]
 }
 
 model TeamMember {
@@ -59,6 +64,47 @@ model Task {
   creator     User?      @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: SetNull)
 }
 
+model Message {
+  id        String   @id @default(cuid())
+  content   String
+  fileUrl   String?
+  fileName  String?
+  teamId    String
+  senderId  String
+  createdAt DateTime @default(now())
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdAt])
+}
+
 enum TaskStatus {
   TODO
   IN_PROGRESS
@@ -73,5 +119,13 @@ enum Priority {
 
 enum Role {
   OWNER
+  ADMIN
   MEMBER
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TEAM_ADDED
+  ROLE_CHANGED
+  TASK_UPDATED
 }

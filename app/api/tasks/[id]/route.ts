@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, NotificationType } from "@prisma/client";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseTaskPayload } from "@/lib/task-payload";
+import { triggerTeamEvent, triggerUserEvent } from "@/lib/pusher-server";
 
 type TaskIdContext = { params: Promise<{ id: string }> };
 
@@ -27,13 +28,21 @@ export async function PUT(request: NextRequest, context: TaskIdContext) {
     return NextResponse.json({ error: "Task not found." }, { status: 404 });
   }
 
-  // If task belongs to a team, verify user is a member or owner of the team
+  // Determine user role in the team
+  let userRole = null;
   if (existingTask.team) {
-    const isMember =
-      existingTask.team.ownerId === authUser.id ||
-      existingTask.team.members.some((m) => m.userId === authUser.id);
+    if (existingTask.team.ownerId === authUser.id) {
+      userRole = "OWNER";
+    } else {
+      const membership = existingTask.team.members.find(
+        (m) => m.userId === authUser.id,
+      );
+      if (membership) {
+        userRole = membership.role;
+      }
+    }
 
-    if (!isMember) {
+    if (!userRole) {
       return NextResponse.json(
         { error: "Forbidden: You are not a member of this task's team." },
         { status: 403 },
@@ -94,7 +103,7 @@ export async function PUT(request: NextRequest, context: TaskIdContext) {
   }
 
   try {
-    const task = await prisma.task.update({
+    const updatedTask = await prisma.task.update({
       where: { id },
       data,
       include: {
@@ -106,7 +115,50 @@ export async function PUT(request: NextRequest, context: TaskIdContext) {
         },
       },
     });
-    return NextResponse.json(task);
+
+    // Broadcast real-time task update to the team
+    if (existingTask.teamId) {
+      await triggerTeamEvent(
+        existingTask.teamId,
+        "tasks",
+        "task-updated",
+        updatedTask,
+      );
+
+      // Log activity
+      await prisma.activityLog.create({
+        data: {
+          teamId: existingTask.teamId,
+          userId: authUser.id,
+          action: "UPDATED_TASK",
+          details: `Updated task '${updatedTask.title}' (Status: ${updatedTask.status})`,
+        },
+      });
+
+      // If new assignee and differs from actor, notify assignee
+      if (
+        parsed.data.assigneeId &&
+        parsed.data.assigneeId !== existingTask.assigneeId &&
+        parsed.data.assigneeId !== authUser.id
+      ) {
+        const notif = await prisma.notification.create({
+          data: {
+            userId: parsed.data.assigneeId,
+            type: NotificationType.TASK_ASSIGNED,
+            title: "Task Assigned to You",
+            message: `${authUser.name} assigned you to '${updatedTask.title}' in ${existingTask.team?.name || "the team"}.`,
+            link: `/teams/${existingTask.teamId}`,
+          },
+        });
+        await triggerUserEvent(
+          parsed.data.assigneeId,
+          "new-notification",
+          notif,
+        );
+      }
+    }
+
+    return NextResponse.json(updatedTask);
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -130,7 +182,7 @@ export async function DELETE(request: NextRequest, context: TaskIdContext) {
     where: { id },
     include: {
       team: {
-        select: { ownerId: true },
+        include: { members: true },
       },
     },
   });
@@ -139,16 +191,20 @@ export async function DELETE(request: NextRequest, context: TaskIdContext) {
     return NextResponse.json({ error: "Task not found." }, { status: 404 });
   }
 
-  // Authorization check: "Only the task creator, the assignee, or the team Owner can delete a task."
+  // 3-Tier Role-Based Authorization Check:
+  // - OWNER: can delete any task
+  // - ADMIN: can delete any task
+  // - MEMBER: can delete ONLY tasks they created (or unassigned tasks they created)
   const isCreator = task.creatorId === authUser.id;
-  const isAssignee = task.assigneeId === authUser.id;
   const isTeamOwner = task.team?.ownerId === authUser.id;
+  const memberRecord = task.team?.members.find((m) => m.userId === authUser.id);
+  const isTeamAdmin = memberRecord?.role === "ADMIN";
 
-  if (!isCreator && !isAssignee && !isTeamOwner) {
+  if (!isTeamOwner && !isTeamAdmin && !isCreator) {
     return NextResponse.json(
       {
         error:
-          "Forbidden: Only the task creator, the assignee, or the team Owner can delete this task.",
+          "Forbidden: Regular members can only delete tasks they personally created. Team Owners and Admins can delete any task.",
       },
       { status: 403 },
     );
@@ -156,6 +212,22 @@ export async function DELETE(request: NextRequest, context: TaskIdContext) {
 
   try {
     await prisma.task.delete({ where: { id } });
+
+    // Broadcast real-time task deletion
+    if (task.teamId) {
+      await triggerTeamEvent(task.teamId, "tasks", "task-deleted", { id });
+
+      // Log activity
+      await prisma.activityLog.create({
+        data: {
+          teamId: task.teamId,
+          userId: authUser.id,
+          action: "DELETED_TASK",
+          details: `Deleted task '${task.title}'`,
+        },
+      });
+    }
+
     return NextResponse.json({
       success: true,
       message: "Task deleted successfully.",

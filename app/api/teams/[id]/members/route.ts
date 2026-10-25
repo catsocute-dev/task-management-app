@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Role, NotificationType } from "@prisma/client";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canManageMembers } from "@/lib/permissions";
+import { triggerUserEvent } from "@/lib/pusher-server";
 
 type TeamIdContext = { params: Promise<{ id: string }> };
 
@@ -21,67 +24,60 @@ export async function POST(request: NextRequest, context: TeamIdContext) {
     return NextResponse.json({ error: "Team not found." }, { status: 404 });
   }
 
-  // Only Owner can add members
-  if (team.ownerId !== authUser.id) {
+  const isOwner = team.ownerId === authUser.id;
+  const actorMember = team.members.find((m) => m.userId === authUser.id);
+  const actorRole: Role | null = isOwner
+    ? "OWNER"
+    : (actorMember?.role ?? null);
+
+  if (!canManageMembers(actorRole)) {
     return NextResponse.json(
-      { error: "Forbidden: Only the team owner can add members." },
+      {
+        error: "Forbidden: Only Owners and Admins can add members to the team.",
+      },
       { status: 403 },
     );
   }
 
-  let body: unknown;
+  let body: { email?: string; role?: Role };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  if (!body || typeof body !== "object") {
-    return NextResponse.json(
-      { error: "Request body must be an object." },
-      { status: 400 },
-    );
+  const email = (body.email || "").trim().toLowerCase();
+  if (!email) {
+    return NextResponse.json({ error: "Email is required." }, { status: 400 });
   }
 
-  const { email } = body as Record<string, unknown>;
-
-  if (typeof email !== "string" || email.trim() === "") {
-    return NextResponse.json(
-      { error: "User email is required." },
-      { status: 400 },
-    );
-  }
-
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const userToAdd = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    select: { id: true, name: true, email: true },
-  });
-
+  const userToAdd = await prisma.user.findUnique({ where: { email } });
   if (!userToAdd) {
     return NextResponse.json(
-      {
-        error: `User with email "${normalizedEmail}" not found. They must register an account first.`,
-      },
+      { error: "No user with this email exists. Ask them to register first." },
       { status: 404 },
     );
   }
 
-  // Check if user is already a member
-  const alreadyMember = team.members.some((m) => m.userId === userToAdd.id);
+  const alreadyMember =
+    team.ownerId === userToAdd.id ||
+    team.members.some((m) => m.userId === userToAdd.id);
+
   if (alreadyMember) {
     return NextResponse.json(
-      { error: "User is already a member of this team." },
-      { status: 409 },
+      { error: "This user is already a member of the team." },
+      { status: 400 },
     );
   }
 
-  const newMember = await prisma.teamMember.create({
+  const assignedRole: Role =
+    body.role === "ADMIN" && actorRole === "OWNER" ? "ADMIN" : "MEMBER";
+
+  const member = await prisma.teamMember.create({
     data: {
       teamId,
       userId: userToAdd.id,
-      role: "MEMBER",
+      role: assignedRole,
     },
     include: {
       user: {
@@ -90,5 +86,27 @@ export async function POST(request: NextRequest, context: TeamIdContext) {
     },
   });
 
-  return NextResponse.json(newMember, { status: 201 });
+  // Log activity
+  await prisma.activityLog.create({
+    data: {
+      teamId,
+      userId: authUser.id,
+      action: "ADDED_MEMBER",
+      details: `Added ${userToAdd.name} (${userToAdd.email}) with role ${assignedRole}`,
+    },
+  });
+
+  // Notify added user
+  const notif = await prisma.notification.create({
+    data: {
+      userId: userToAdd.id,
+      type: NotificationType.TEAM_ADDED,
+      title: "Added to Team",
+      message: `${authUser.name} added you to ${team.name} as a ${assignedRole}.`,
+      link: `/teams/${teamId}`,
+    },
+  });
+  await triggerUserEvent(userToAdd.id, "new-notification", notif);
+
+  return NextResponse.json(member, { status: 201 });
 }

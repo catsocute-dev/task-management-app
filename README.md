@@ -1,200 +1,163 @@
-# TaskHub — Task & Team Management App (Assignment 2)
+# TaskHub - Real-time Collaborative Task & Team Management Platform (Assignment 3 & 4)
 
-A collaborative Task & Team Management application built with **Next.js App Router**, **Prisma ORM**, and **PostgreSQL (Supabase)**, featuring JWT authentication, role-based authorization, team management, task assignment, and an interactive Kanban board.
-
-## Submission Information (Grading Reference)
-
-- **Test Account Email:** `test@example.com`
-- **Test Account Password:** `password123`
-- **Secondary Member Account:** `member@example.com` / `password123`
-- **Email-verified / Ready to log in immediately:** Yes (using self-contained JWT authentication; no inbox confirmation blockers)
-- **Self-registration works:** Yes (the grader can register any new account on `/register` and immediately access the app)
+A modern, real-time collaborative workspace built with **Next.js App Router**, **Prisma ORM**, **PostgreSQL (Supabase)**, and **Pusher Channels**. TaskHub delivers live chat communication, instantaneous multi-user Kanban board updates, in-app notifications, and an advanced 3-tier role & permission system.
 
 ---
 
-## Features (Assignment 2)
+## Submission Information (Required Grading Checklist)
 
-### 1. Authentication & Security
-
-- **Register**: Create an account with name, email, and password (`POST /api/auth/register`).
-- **Login**: Authenticate and receive a JWT session (`POST /api/auth/login`), stored in an HTTP-only secure cookie and returned as a Bearer token in the JSON response.
-- **Logout**: Invalidate session cookie (`POST /api/auth/logout`).
-- **Me Endpoint**: Get current authenticated user profile (`GET /api/auth/me`).
-- **Route Protection**: Middleware ensures unauthenticated users can only view the homepage (`/`), login (`/login`), and register (`/register`). All team and task features require login.
-- **Grading Convenience**: The `/login` page features a one-click test credentials autofill button.
-
-### 2. Team Management
-
-- **Create Team**: Logged-in users can create teams and automatically become the team `OWNER` (`POST /api/teams`).
-- **List Teams**: View all teams the current user owns or belongs to (`GET /api/teams`).
-- **Team Workspace**: View team details, members, and task lists (`GET /api/teams/:id`).
-- **Edit / Delete Team**: Team Owner can update name/description or delete the team (`PUT /api/teams/:id`, `DELETE /api/teams/:id`).
-- **Member Management**: Owner can add members by email (`POST /api/teams/:id/members`) and remove members (`DELETE /api/teams/:id/members/:userId`).
-
-### 3. Task Management & Relational Modeling
-
-- **Create Task**: Any member of a team can create tasks within that team (`POST /api/teams/:id/tasks`).
-- **Assign Task**: Tasks can be assigned to specific team members.
-- **Update Task**: Members can update title, description, status, priority, due date, and assignee (`PUT /api/tasks/:id`).
-- **Role-Based Delete**: **Only the task creator, the assignee, or the team Owner can delete a task** (`DELETE /api/tasks/:id`). Other team members receive a `403 Forbidden` response.
-
-### 4. Interactive UI & Bonus Features
-
-- **Kanban Board**: Drag-and-drop tasks between _To Do_, _In Progress_, and _Done_ columns with optimistic status updates and quick-move buttons.
-- **Table View Toggle**: Switch effortlessly between visual Kanban columns and a structured data table.
-- **Search & Multi-Filter**: Search by keywords; filter by status, priority, or assignee.
-- **Task Pagination**: Client-side and server-side pagination for teams with large task volumes.
-- **Status & Priority Badges**: Rich, color-coded badges for visual clarity.
+Student ID: QE190011
+Full Name: Le Nhat
+GitHub Repository URL: https://github.com/catsocute-dev/task-management-app
+Deployed Website URL (Vercel): https://task-management-app-ten-navy.vercel.app
+Separate Backend URL (NestJS on Render) — write N/A if not used: N/A
+Real-time mechanism used (Supabase Realtime / Socket.io / Pusher / Ably): Pusher
+Test Account 1 Email: test@example.com
+Test Account 1 Password: password123
+Test Account 2 Email (must be on the SAME team as Account 1, to test real-time between two sessions): member@example.com
+Test Account 2 Password: password123
+Both test accounts are already email-verified / ready to log in immediately, with no confirmation link needed (Yes / No): Yes
+Demo video link (YouTube/Drive/Loom, 2–3 minutes, showing live chat and live task updates across two sessions): https://youtu.be/demo-video-link
 
 ---
 
-## Tech Stack
+## Key Features (Assignment 3 & 4)
 
-- **Framework**: Next.js 16 (App Router, Server Route Handlers, React 19)
-- **Database**: PostgreSQL on Supabase
-- **ORM**: Prisma 6
-- **Auth**: JWT via `jose` and `bcryptjs` (HTTP-only cookies + Authorization header support)
-- **Styling**: Tailwind CSS + Lucide Icons
-- **Deployment**: Vercel
+### 1. Real-time Team Chat
+
+- **Dedicated Chat Room Per Team**: Located under the **"Live Chat"** tab on each team's page.
+- **Message Persistence**: All messages are stored in PostgreSQL with sender relation, message text, optional file attachment URL, and creation timestamp.
+- **Instant Live Delivery**: Messages sent by one member appear immediately for all other online team members via Pusher WebSockets without refreshing.
+- **Typing Indicator**: Real-time broadcast showing _"Jane Member is typing..."_ when teammates are actively typing.
+- **Attachment Support**: Send image/document URLs with in-line image preview and download links.
+
+### 2. Live Task Board Updates (Multi-User Synchronization)
+
+- **Live Kanban & Table Synchronization**: Changes made by one user (creating a task, dragging a card between _To Do / In Progress / Done_, updating details, or deleting a task) broadcast instantly across all open browser sessions viewing the same team.
+- **Optimistic UI Updates**: Status changes update smoothly on the sender's screen while triggering a Pusher event to sync remote teammates' screens.
+
+### 3. In-App Notification Center
+
+- **Header Notification Bell**: Displays an animated unread badge counter in the top navigation bar.
+- **Real-time Push Alerts**: When assigned a task or added to a team, users receive an instant in-app notification without reloading the page.
+- **Notification Dropdown**:
+  - View recent notifications with time-ago badges.
+  - One-click navigation link to open the relevant team workspace.
+  - Individual "Mark as Read" or "Mark all read" controls.
+- **Browser Desktop Notifications**: Users can opt in to receive native OS desktop alerts via the Web Notifications API.
+
+### 4. Advanced 3-Tier Role & Permission System
+
+Enforced strictly both in **Server-side Route Handlers** (HTTP 403 Forbidden checks) and in the **Client UI** (disabled/hidden buttons and permission summaries):
+
+| Capability / Action                            |          OWNER          |         ADMIN         |          MEMBER          |
+| :--------------------------------------------- | :---------------------: | :-------------------: | :----------------------: |
+| **Delete Team**                                |         ✅ Yes          |         ❌ No         |          ❌ No           |
+| **Edit Team Details** (Name, Description)      |         ✅ Yes          |        ✅ Yes         |          ❌ No           |
+| **Manage Members** (Add member, remove member) |         ✅ Yes          | ✅ Yes (Members only) |          ❌ No           |
+| **Change Member Roles**                        | ✅ Yes (Admin ↔ Member) |         ❌ No         |          ❌ No           |
+| **Demote / Remove Owner**                      |          ❌ No          |         ❌ No         |          ❌ No           |
+| **Delete Any Task** in Team                    |         ✅ Yes          |        ✅ Yes         | ❌ No (Own created only) |
+| **Create & Update Tasks**                      |         ✅ Yes          |        ✅ Yes         |          ✅ Yes          |
+| **Move Status of Assigned Task**               |         ✅ Yes          |        ✅ Yes         |          ✅ Yes          |
+| **Live Team Chat & View Board**                |         ✅ Yes          |        ✅ Yes         |          ✅ Yes          |
+
+### 5. Bonus Features
+
+- **Team Audit Trail / Activity Log**: An **"Activity Log"** tab displays chronological team event logs (task creation, status moves, member joins, and role updates).
+- **Online Channel Indicator**: Visual live badges confirming active real-time channel connection.
+- **Role Badges**: Color-coded badges (_Purple Owner, Blue Admin, Slate Member_) displayed in the team header and member list.
 
 ---
 
-## Environment Variables
+## Tech Stack & Architecture
 
-Copy `.env.example` to `.env`:
-
-```env
-# Supabase PostgreSQL Connection Strings
-DATABASE_URL="postgresql://USER:PASSWORD@HOST:6543/postgres?pgbouncer=true&sslmode=require"
-DIRECT_URL="postgresql://USER:PASSWORD@HOST:5432/postgres?sslmode=require"
-
-# JWT Secret for Token Signing
-JWT_SECRET="your-secure-jwt-secret-key-32-chars-or-more"
-```
+- **Frontend**: Next.js 16 (App Router, Server Route Handlers, React 19, TypeScript)
+- **Database**: PostgreSQL on Supabase (Pooler & Direct connections)
+- **ORM**: Prisma 6 (Models: `User`, `Team`, `TeamMember`, `Task`, `Message`, `Notification`, `ActivityLog`)
+- **Real-time Engine**: Pusher Channels (`pusher` server SDK + `pusher-js` client SDK)
+- **Authentication**: JWT via `jose` and `bcryptjs` (HTTP-only secure cookies + Bearer token support)
+- **Styling**: Tailwind CSS + Lucide React Icons
+- **Deployment**: Vercel (Production continuous deployment)
 
 ---
 
 ## Step-by-Step External System Setup Guide
 
-### 1. Supabase Setup (Database & Migrations)
+### 1. Supabase (Database Setup)
 
-1. Log in to [Supabase](https://supabase.com) and open your project.
-2. In **Project Settings** → **Database**:
-   - Copy the **Connection string (URI)** with **Transaction pooler** (port `6543`) into `DATABASE_URL` (ensure `?pgbouncer=true&sslmode=require` is present).
+1. Log in to [Supabase](https://supabase.com).
+2. Go to **Project Settings** -> **Database**:
+   - Copy the **Connection string (URI)** with **Transaction pooler** (port `6543`) into `DATABASE_URL`.
    - Copy the **Direct connection URI** (port `5432`) into `DIRECT_URL`.
-3. Synchronize database schema:
+3. Run database migrations and seed test data:
    ```bash
    npx prisma db push
-   # or
-   npx prisma migrate deploy
-   ```
-4. Seed test accounts and initial team tasks:
-   ```bash
    npm run db:seed
    ```
-5. In Supabase **Table Editor**, confirm that `User`, `Team`, `TeamMember`, and `Task` tables contain initial rows.
 
-### 2. Vercel Setup (Deployment & Configuration)
+### 2. Pusher Channels (Real-Time WebSocket Setup)
 
-1. Open your project on [Vercel Dashboard](https://vercel.com).
-2. Go to **Settings** → **Environment Variables** and add:
-   - `DATABASE_URL`: Your Supabase transaction pooler URI.
-   - `DIRECT_URL`: Your Supabase direct connection URI.
-   - `JWT_SECRET`: A secure random secret string.
-3. In **Settings** → **Build & Development Settings**:
-   - Build Command: `prisma generate && next build` (defined in `package.json`).
-4. Trigger a deployment by pushing to `main` branch on GitHub:
+1. Sign up for a free account at [pusher.com](https://pusher.com) (free sandbox: 200,000 messages/day, 100 concurrent connections).
+2. Click **Create app**:
+   - App Name: `taskhub`
+   - Cluster: `ap1` (or your preferred region)
+   - Frontend: `React`
+   - Backend: `Node.js`
+3. Go to **App Keys** tab and copy your credentials into `.env` (and Vercel Environment Variables):
+   ```env
+   PUSHER_APP_ID="your_app_id"
+   PUSHER_KEY="your_key"
+   PUSHER_SECRET="your_secret"
+   PUSHER_CLUSTER="ap1"
+   NEXT_PUBLIC_PUSHER_KEY="your_key"
+   NEXT_PUBLIC_PUSHER_CLUSTER="ap1"
+   ```
+
+### 3. Vercel (Deployment)
+
+1. In your Vercel Dashboard project, navigate to **Settings** -> **Environment Variables**.
+2. Add all 9 environment variables:
+   - `DATABASE_URL`
+   - `DIRECT_URL`
+   - `JWT_SECRET`
+   - `PUSHER_APP_ID`
+   - `PUSHER_KEY`
+   - `PUSHER_SECRET`
+   - `PUSHER_CLUSTER`
+   - `NEXT_PUBLIC_PUSHER_KEY`
+   - `NEXT_PUBLIC_PUSHER_CLUSTER`
+3. Push changes to GitHub:
    ```bash
+   git add .
+   git commit -m "feat: complete Assignment 3 & 4 real-time collaboration and role permissions"
    git push origin main
    ```
-5. Verify that the production deployment succeeds and all pages (`/`, `/login`, `/register`, `/teams`, `/teams/:id`) are functional.
 
 ---
 
-## RESTful API Endpoints Summary
+## Two-Session Verification & Demo Video Recording Guide (2–3 Minutes)
 
-| Method   | Path                             | Description                            | Access Control                                            |
-| -------- | -------------------------------- | -------------------------------------- | --------------------------------------------------------- |
-| `POST`   | `/api/auth/register`             | Register new user                      | Public                                                    |
-| `POST`   | `/api/auth/login`                | Login and receive token                | Public                                                    |
-| `POST`   | `/api/auth/logout`               | Logout (clear cookie)                  | Public                                                    |
-| `GET`    | `/api/auth/me`                   | Current user profile                   | Authenticated user                                        |
-| `GET`    | `/api/teams`                     | List current user's teams              | Authenticated user                                        |
-| `POST`   | `/api/teams`                     | Create a new team                      | Authenticated user (becomes Owner)                        |
-| `GET`    | `/api/teams/:id`                 | Get team details, members, tasks       | Team members & owner                                      |
-| `PUT`    | `/api/teams/:id`                 | Update team name & description         | **Team Owner only** (403 otherwise)                       |
-| `DELETE` | `/api/teams/:id`                 | Delete team and cascade tasks          | **Team Owner only** (403 otherwise)                       |
-| `POST`   | `/api/teams/:id/members`         | Add member by email                    | **Team Owner only**                                       |
-| `DELETE` | `/api/teams/:id/members/:userId` | Remove member from team                | **Team Owner only** (cannot remove self)                  |
-| `GET`    | `/api/teams/:id/tasks`           | List tasks (supports search & filters) | Team members & owner                                      |
-| `POST`   | `/api/teams/:id/tasks`           | Create task within team                | Any team member                                           |
-| `PUT`    | `/api/tasks/:id`                 | Update task details / status           | Any team member                                           |
-| `DELETE` | `/api/tasks/:id`                 | Delete a task                          | **Creator, assignee, or team Owner only** (403 otherwise) |
+To record your demonstration video (required for submission):
 
----
-
-## Entity Relationship Diagram (ERD)
-
-```mermaid
-erDiagram
-  User ||--o{ Team : "owns (ownerId)"
-  User ||--o{ TeamMember : "joins (userId)"
-  Team ||--o{ TeamMember : "has members (teamId)"
-  Team ||--o{ Task : "contains (teamId)"
-  User ||--o{ Task : "assigned to (assigneeId)"
-  User ||--o{ Task : "created by (creatorId)"
-
-  User {
-    string id PK
-    string name
-    string email
-    string passwordHash
-    datetime createdAt
-  }
-  Team {
-    string id PK
-    string name
-    string description
-    string ownerId FK
-    datetime createdAt
-  }
-  TeamMember {
-    string id PK
-    string teamId FK
-    string userId FK
-    enum role "OWNER | MEMBER"
-    datetime joinedAt
-  }
-  Task {
-    string id PK
-    string title
-    string description
-    enum status "TODO | IN_PROGRESS | DONE"
-    enum priority "LOW | MEDIUM | HIGH"
-    datetime dueDate
-    string teamId FK
-    string assigneeId FK
-    string creatorId FK
-    datetime createdAt
-  }
-```
-
----
-
-## Local Development
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Generate Prisma Client
-npx prisma generate
-
-# 3. Seed test account and data
-npm run db:seed
-
-# 4. Start local development server
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to view the application.
+1. **Open Two Browser Windows Side by Side**:
+   - **Window 1 (Chrome Regular)**: Log in as `test@example.com` / `password123` (**Owner**).
+   - **Window 2 (Chrome Incognito or Edge)**: Log in as `member@example.com` / `password123` (**Member**).
+2. **Navigate Both Windows to Team "Engineering Core"**:
+   - Click on the team _"Engineering Core"_.
+3. **Demonstrate Real-Time Team Chat**:
+   - In Window 2, switch to the **"Live Chat"** tab and type a message.
+   - Point out that Window 1 shows the typing indicator (_"Jane Member is typing..."_).
+   - Click Send in Window 2: Window 1 instantly displays the new chat bubble without refreshing!
+4. **Demonstrate Live Task Board Synchronization**:
+   - In both windows, click the **"Tasks"** tab (Kanban view).
+   - In Window 1, drag a task from **"To Do"** to **"In Progress"**.
+   - Show that Window 2's board moves the task card live without any page reload!
+5. **Demonstrate In-App Notifications**:
+   - In Window 1, create a task and assign it to _Jane Member_ (`member@example.com`).
+   - Show Window 2's notification bell ringing with an unread badge `(1)`.
+   - In Window 2, open the notification bell and click "Mark as read".
+6. **Demonstrate 3-Tier Permissions**:
+   - In Window 2 (Member), show that Delete buttons on tasks created by others are disabled/inaccessible.
+   - In Window 1 (Owner), switch to **"Members & Roles"** tab and promote Jane Member to **Admin**.
+   - Refresh or switch tabs in Window 2: Jane Member now has Admin privileges and can manage tasks and members.

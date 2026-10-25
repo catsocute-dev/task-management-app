@@ -12,19 +12,32 @@ import {
   Table as TableIcon,
   Search,
   Shield,
+  ShieldCheck,
   Settings,
   Trash2,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  MessageSquare,
+  Clock,
 } from "lucide-react";
-import { Team, Task, TaskStatus } from "@/lib/task-types";
+import {
+  Team,
+  Task,
+  TaskStatus,
+  Role,
+  ROLE_LABELS,
+  ROLE_COLORS,
+} from "@/lib/task-types";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { TaskKanban } from "@/components/tasks/TaskKanban";
 import { TaskTable } from "@/components/tasks/TaskTable";
 import { TaskModal } from "@/components/tasks/TaskModal";
 import { TeamMembersTab } from "@/components/teams/TeamMembersTab";
 import { EditTeamModal } from "@/components/teams/EditTeamModal";
+import { TeamChatPanel } from "@/components/chat/TeamChatPanel";
+import { TeamActivityTab } from "@/components/teams/TeamActivityTab";
+import { usePusherChannel } from "@/lib/pusher-client";
 
 export default function TeamDetailPage({
   params,
@@ -39,10 +52,12 @@ export default function TeamDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Tab state: "tasks" | "members"
-  const [activeTab, setActiveTab] = useState<"tasks" | "members">("tasks");
+  // Tab state: "tasks" | "chat" | "members" | "activity"
+  const [activeTab, setActiveTab] = useState<
+    "tasks" | "chat" | "members" | "activity"
+  >("tasks");
 
-  // View state: "kanban" | "table"
+  // View state for tasks: "kanban" | "table"
   const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
 
   // Filters & Search
@@ -60,7 +75,11 @@ export default function TeamDetailPage({
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isEditTeamModalOpen, setIsEditTeamModalOpen] = useState(false);
 
+  // Determine current user's role in this team
   const isOwner = currentUser?.id === team?.ownerId;
+  const currentMember = team?.members.find((m) => m.userId === currentUser?.id);
+  const myRole: Role = isOwner ? "OWNER" : currentMember?.role || "MEMBER";
+  const canEditTeamSettings = isOwner || myRole === "ADMIN";
 
   const fetchTeam = useCallback(async () => {
     try {
@@ -118,6 +137,42 @@ export default function TeamDetailPage({
     };
   }, [teamId]);
 
+  // Real-time synchronization of task board across all online members
+  usePusherChannel(`team-${teamId}-tasks`, {
+    "task-created": (createdTask: Task) => {
+      setTeam((prev) => {
+        if (!prev) return prev;
+        const currentTasks = prev.tasks || [];
+        if (currentTasks.some((t) => t.id === createdTask.id)) return prev;
+        return {
+          ...prev,
+          tasks: [createdTask, ...currentTasks],
+        };
+      });
+    },
+    "task-updated": (updatedTask: Task) => {
+      setTeam((prev) => {
+        if (!prev) return prev;
+        const currentTasks = prev.tasks || [];
+        return {
+          ...prev,
+          tasks: currentTasks.map((t) =>
+            t.id === updatedTask.id ? updatedTask : t,
+          ),
+        };
+      });
+    },
+    "task-deleted": (data: { id: string }) => {
+      setTeam((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          tasks: (prev.tasks || []).filter((t) => t.id !== data.id),
+        };
+      });
+    },
+  });
+
   // Delete team (Owner only)
   const handleDeleteTeam = async () => {
     if (!team) return;
@@ -141,11 +196,8 @@ export default function TeamDetailPage({
     }
   };
 
-  // Quick status update for Kanban or Table
+  // Optimistic status change
   const handleStatusChange = async (taskId: string, newStatus: TaskStatus) => {
-    if (!team) return;
-
-    // Optimistic update
     setTeam((prev) => {
       if (!prev || !prev.tasks) return prev;
       return {
@@ -196,7 +248,6 @@ export default function TeamDetailPage({
   const filteredTasks = useMemo(() => {
     if (!teamTasks) return [];
     return teamTasks.filter((task) => {
-      // Search keyword filter
       if (searchQuery.trim() !== "") {
         const q = searchQuery.toLowerCase();
         const matchesTitle = task.title.toLowerCase().includes(q);
@@ -205,17 +256,14 @@ export default function TeamDetailPage({
         if (!matchesTitle && !matchesDesc) return false;
       }
 
-      // Status filter
       if (statusFilter !== "ALL" && task.status !== statusFilter) {
         return false;
       }
 
-      // Priority filter
       if (priorityFilter !== "ALL" && task.priority !== priorityFilter) {
         return false;
       }
 
-      // Assignee filter
       if (assigneeFilter === "UNASSIGNED") {
         if (task.assigneeId) return false;
       } else if (assigneeFilter !== "ALL") {
@@ -276,8 +324,8 @@ export default function TeamDetailPage({
           <span>Back to All Teams</span>
         </Link>
 
-        {isOwner && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          {canEditTeamSettings && (
             <button
               type="button"
               onClick={() => setIsEditTeamModalOpen(true)}
@@ -286,6 +334,9 @@ export default function TeamDetailPage({
               <Settings className="h-3.5 w-3.5 text-zinc-500" />
               <span>Edit Team</span>
             </button>
+          )}
+
+          {isOwner && (
             <button
               type="button"
               onClick={handleDeleteTeam}
@@ -294,8 +345,8 @@ export default function TeamDetailPage({
               <Trash2 className="h-3.5 w-3.5 text-rose-600" />
               <span>Delete Team</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Team Header Banner */}
@@ -306,16 +357,21 @@ export default function TeamDetailPage({
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900">
                 {team.name}
               </h1>
-              {isOwner ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-200/60">
+
+              {/* Current User Active Role Badge */}
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold border ${ROLE_COLORS[myRole].badge}`}
+                title={`Your active role: ${ROLE_LABELS[myRole]}`}
+              >
+                {myRole === "OWNER" ? (
                   <Shield className="h-3 w-3" />
-                  Owner
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200/60">
-                  Member
-                </span>
-              )}
+                ) : myRole === "ADMIN" ? (
+                  <ShieldCheck className="h-3 w-3" />
+                ) : (
+                  <Users className="h-3 w-3" />
+                )}
+                <span>Your Role: {ROLE_LABELS[myRole]}</span>
+              </span>
             </div>
             <p className="mt-1 text-sm text-zinc-600 max-w-2xl">
               {team.description || "No description provided for this team."}
@@ -340,66 +396,94 @@ export default function TeamDetailPage({
         </div>
 
         {/* Tab Navigation */}
-        <div className="mt-6 flex border-b border-zinc-100 gap-6">
+        <div className="mt-6 flex border-b border-zinc-100 gap-6 overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab("tasks")}
-            className={`flex items-center gap-2 pb-3 text-sm font-semibold border-b-2 transition-colors ${
+            className={`flex items-center gap-2 pb-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
               activeTab === "tasks"
                 ? "border-indigo-600 text-indigo-600"
                 : "border-transparent text-zinc-500 hover:text-zinc-800"
             }`}
           >
             <CheckSquare className="h-4 w-4" />
-            <span>Tasks ({team.tasks?.length ?? 0})</span>
+            <span>Tasks</span>
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-600">
+              {team.tasks?.length ?? 0}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("chat")}
+            className={`flex items-center gap-2 pb-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === "chat"
+                ? "border-indigo-600 text-indigo-600"
+                : "border-transparent text-zinc-500 hover:text-zinc-800"
+            }`}
+          >
+            <MessageSquare className="h-4 w-4" />
+            <span>Live Chat</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Realtime
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("members")}
-            className={`flex items-center gap-2 pb-3 text-sm font-semibold border-b-2 transition-colors ${
+            className={`flex items-center gap-2 pb-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
               activeTab === "members"
                 ? "border-indigo-600 text-indigo-600"
                 : "border-transparent text-zinc-500 hover:text-zinc-800"
             }`}
           >
             <Users className="h-4 w-4" />
-            <span>Members ({team.members.length})</span>
+            <span>Members & Roles</span>
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-600">
+              {team.members.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("activity")}
+            className={`flex items-center gap-2 pb-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === "activity"
+                ? "border-indigo-600 text-indigo-600"
+                : "border-transparent text-zinc-500 hover:text-zinc-800"
+            }`}
+          >
+            <Clock className="h-4 w-4" />
+            <span>Activity Log</span>
           </button>
         </div>
       </div>
 
-      {/* Tab 1: Tasks Content */}
+      {/* Tab Content: Tasks */}
       {activeTab === "tasks" && (
-        <div className="space-y-4">
-          {/* Controls Bar: Search, Filters, View Switcher & Create Task */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-xs">
-            {/* Search Input */}
-            <div className="relative flex-1 min-w-[200px]">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
-                <Search className="h-4 w-4" />
+        <div className="space-y-6">
+          {/* Controls: Search, Filters, View Toggle, Create Task */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex flex-1 flex-wrap items-center gap-3">
+              {/* Search Bar */}
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search tasks by title or description..."
+                  className="w-full rounded-xl border border-zinc-200 bg-white py-2 pl-9 pr-4 text-xs sm:text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                />
               </div>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setCurrentPage(1);
-                }}
-                placeholder="Search tasks by title or details..."
-                className="w-full rounded-lg border border-zinc-200 py-1.5 pl-9 pr-3 text-xs text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-600 focus:outline-none"
-              />
-            </div>
 
-            {/* Filter Dropdowns */}
-            <div className="flex flex-wrap items-center gap-2">
+              {/* Status Filter */}
               <select
                 value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="rounded-lg border border-zinc-200 py-1.5 px-2.5 text-xs text-zinc-700 focus:outline-none focus:border-indigo-600"
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 focus:border-indigo-600 focus:outline-none"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="TODO">To Do</option>
@@ -407,13 +491,11 @@ export default function TeamDetailPage({
                 <option value="DONE">Done</option>
               </select>
 
+              {/* Priority Filter */}
               <select
                 value={priorityFilter}
-                onChange={(e) => {
-                  setPriorityFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="rounded-lg border border-zinc-200 py-1.5 px-2.5 text-xs text-zinc-700 focus:outline-none focus:border-indigo-600"
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 focus:border-indigo-600 focus:outline-none"
               >
                 <option value="ALL">All Priorities</option>
                 <option value="LOW">Low</option>
@@ -421,13 +503,11 @@ export default function TeamDetailPage({
                 <option value="HIGH">High</option>
               </select>
 
+              {/* Assignee Filter */}
               <select
                 value={assigneeFilter}
-                onChange={(e) => {
-                  setAssigneeFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="rounded-lg border border-zinc-200 py-1.5 px-2.5 text-xs text-zinc-700 focus:outline-none focus:border-indigo-600"
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 focus:border-indigo-600 focus:outline-none"
               >
                 <option value="ALL">All Assignees</option>
                 <option value="UNASSIGNED">Unassigned</option>
@@ -439,18 +519,17 @@ export default function TeamDetailPage({
               </select>
             </div>
 
-            {/* View Switcher & Create Task Button */}
-            <div className="flex items-center gap-2 pt-2 lg:pt-0 border-t lg:border-t-0 border-zinc-100">
-              <div className="flex items-center rounded-lg border border-zinc-200 p-0.5 bg-zinc-50">
+            <div className="flex items-center gap-3 self-end lg:self-auto">
+              {/* View Toggle */}
+              <div className="flex items-center rounded-xl border border-zinc-200 bg-white p-1">
                 <button
                   type="button"
                   onClick={() => setViewMode("kanban")}
-                  className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                     viewMode === "kanban"
-                      ? "bg-white text-indigo-600 shadow-2xs"
+                      ? "bg-zinc-100 text-zinc-900 shadow-2xs"
                       : "text-zinc-500 hover:text-zinc-900"
                   }`}
-                  title="Kanban Board View"
                 >
                   <Kanban className="h-3.5 w-3.5" />
                   <span>Kanban</span>
@@ -458,37 +537,38 @@ export default function TeamDetailPage({
                 <button
                   type="button"
                   onClick={() => setViewMode("table")}
-                  className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                     viewMode === "table"
-                      ? "bg-white text-indigo-600 shadow-2xs"
+                      ? "bg-zinc-100 text-zinc-900 shadow-2xs"
                       : "text-zinc-500 hover:text-zinc-900"
                   }`}
-                  title="Table View"
                 >
                   <TableIcon className="h-3.5 w-3.5" />
                   <span>Table</span>
                 </button>
               </div>
 
+              {/* Create Task Button */}
               <button
                 type="button"
                 onClick={() => {
                   setEditingTask(null);
                   setIsTaskModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-indigo-500 transition-colors"
+                className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 active:scale-95 transition-all"
               >
                 <Plus className="h-4 w-4" />
-                <span>Create Task</span>
+                <span>New Task</span>
               </button>
             </div>
           </div>
 
-          {/* Tasks Display: Kanban or Table */}
+          {/* Kanban / Table Display */}
           {viewMode === "kanban" ? (
             <TaskKanban
               tasks={paginatedTasks}
               teamOwnerId={team.ownerId}
+              currentUserRole={myRole}
               onEditTask={(task) => {
                 setEditingTask(task);
                 setIsTaskModalOpen(true);
@@ -500,6 +580,7 @@ export default function TeamDetailPage({
             <TaskTable
               tasks={paginatedTasks}
               teamOwnerId={team.ownerId}
+              currentUserRole={myRole}
               onEditTask={(task) => {
                 setEditingTask(task);
                 setIsTaskModalOpen(true);
@@ -509,48 +590,31 @@ export default function TeamDetailPage({
             />
           )}
 
-          {/* Pagination Controls */}
+          {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-2xs text-xs text-zinc-600">
-              <div>
-                Showing{" "}
-                <span className="font-semibold text-zinc-900">
-                  {(currentPage - 1) * pageSize + 1}
-                </span>{" "}
-                to{" "}
-                <span className="font-semibold text-zinc-900">
-                  {Math.min(currentPage * pageSize, filteredTasks.length)}
-                </span>{" "}
-                of{" "}
-                <span className="font-semibold text-zinc-900">
-                  {filteredTasks.length}
-                </span>{" "}
-                tasks
-              </div>
-
+            <div className="flex items-center justify-between border-t border-zinc-200 pt-4">
+              <span className="text-xs text-zinc-500">
+                Showing {paginatedTasks.length} of {filteredTasks.length} tasks
+                (Page {currentPage} of {totalPages})
+              </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 transition-colors"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="rounded-lg border border-zinc-200 bg-white p-1.5 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
                 >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                  <span>Previous</span>
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
-                <span className="px-2 font-semibold text-zinc-800">
-                  {currentPage} / {totalPages}
-                </span>
                 <button
                   type="button"
+                  disabled={currentPage === totalPages}
                   onClick={() =>
                     setCurrentPage((p) => Math.min(totalPages, p + 1))
                   }
-                  disabled={currentPage === totalPages}
-                  className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 transition-colors"
+                  className="rounded-lg border border-zinc-200 bg-white p-1.5 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
                 >
-                  <span>Next</span>
-                  <ChevronRight className="h-3.5 w-3.5" />
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -558,32 +622,44 @@ export default function TeamDetailPage({
         </div>
       )}
 
-      {/* Tab 2: Members Content */}
+      {/* Tab Content: Live Chat */}
+      {activeTab === "chat" && (
+        <TeamChatPanel
+          teamId={team.id}
+          teamName={team.name}
+          members={team.members}
+        />
+      )}
+
+      {/* Tab Content: Members & Roles */}
       {activeTab === "members" && (
         <TeamMembersTab team={team} onMembersUpdated={fetchTeam} />
       )}
 
-      {/* Create / Edit Task Modal */}
+      {/* Tab Content: Activity Log */}
+      {activeTab === "activity" && <TeamActivityTab teamId={team.id} />}
+
+      {/* Modals */}
       <TaskModal
         isOpen={isTaskModalOpen}
-        teamId={team.id}
-        members={team.members}
-        initialTask={editingTask}
         onClose={() => {
           setIsTaskModalOpen(false);
           setEditingTask(null);
         }}
+        teamId={team.id}
+        members={team.members}
+        initialTask={editingTask}
         onSuccess={fetchTeam}
       />
 
-      {/* Edit Team Modal */}
       <EditTeamModal
         isOpen={isEditTeamModalOpen}
-        team={team}
         onClose={() => setIsEditTeamModalOpen(false)}
-        onSuccess={(updated) =>
-          setTeam((prev) => (prev ? { ...prev, ...updated } : prev))
-        }
+        team={team}
+        onSuccess={(updated) => {
+          setTeam(updated);
+          setIsEditTeamModalOpen(false);
+        }}
       />
     </div>
   );
